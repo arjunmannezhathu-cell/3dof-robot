@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3-Axis Interactive Welding Robot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0f172a; font-family: sans-serif; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        /* UI Overlay Layer */
+        #ui-layer {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; /* Let clicks pass through to 3D canvas... */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 1.5rem;
+            box-sizing: border-box;
+        }
+
+        /* Re-enable pointer events for specific UI components */
+        .interactive-ui { pointer-events: auto; }
+
+        /* Joystick Styling */
+        .joystick-panel {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            margin-top: auto;
+        }
+        
+        .joystick-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .joystick-bg {
+            width: 100px;
+            height: 100px;
+            background: rgba(30, 41, 59, 0.8);
+            border: 2px solid #334155;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            touch-action: none; /* Prevent scrolling when using joysticks */
+        }
+
+        .joystick-knob {
+            width: 40px;
+            height: 40px;
+            background: #eab308;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: inset 0 -2px 4px rgba(0,0,0,0.3), 0 2px 5px rgba(0,0,0,0.5);
+            transition: background-color 0.2s;
+        }
+        
+        .joystick-bg:active .joystick-knob { background: #facc15; }
+
+        /* Mobile specific adjustments */
+        @media (max-width: 768px) {
+            .joystick-bg { width: 80px; height: 80px; }
+            .joystick-knob { width: 34px; height: 34px; }
+            .joystick-panel { gap: 1rem; justify-content: center; width: 100%; margin-bottom: 1rem; }
+        }
+    </style>
+    <!-- Import maps polyfill -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-layer">
+        <!-- Top Info Panel -->
+        <div class="flex justify-between items-start">
+            <div class="bg-slate-800/90 text-slate-200 p-4 rounded-xl border border-slate-700 shadow-xl backdrop-blur-sm interactive-ui">
+                <h1 class="text-xl font-bold text-yellow-500 mb-1">3-Axis Welding Robot</h1>
+                <p id="limits-text" class="text-sm text-slate-400 mb-3">All joints limited to &plusmn;90&deg;</p>
+                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-mono">
+                    <span class="text-slate-400">Base (J1):</span> <span id="lbl-j1" class="text-right text-white">0.0&deg;</span>
+                    <span class="text-slate-400">Shoulder (J2):</span> <span id="lbl-j2" class="text-right text-white">0.0&deg;</span>
+                    <span class="text-slate-400">Elbow (J3):</span> <span id="lbl-j3" class="text-right text-white">0.0&deg;</span>
+                </div>
+            </div>
+            
+            <div class="flex gap-2">
+                <button id="btn-settings" class="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg shadow-lg transition-colors interactive-ui border border-slate-600 flex items-center justify-center" title="Settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                </button>
+                <button id="btn-reset" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-semibold shadow-lg transition-colors interactive-ui border border-slate-600">
+                    Reset Pose
+                </button>
+            </div>
+        </div>
+
+        <!-- Settings Modal (Hidden by default) -->
+        <div id="settings-modal" class="hidden absolute inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center interactive-ui">
+            <div class="bg-slate-800 p-6 rounded-xl border border-slate-600 shadow-2xl w-full max-w-sm">
+                <h2 class="text-xl font-bold text-yellow-500 mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+                    </svg>
+                    Joint Limits
+                </h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-slate-300 text-sm font-semibold block mb-1">Base (J1) Min / Max &deg;</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="in-j1-min" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-yellow-500">
+                            <input type="number" id="in-j1-max" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-yellow-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-slate-300 text-sm font-semibold block mb-1">Shoulder (J2) Min / Max &deg;</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="in-j2-min" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-yellow-500">
+                            <input type="number" id="in-j2-max" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-yellow-500">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-slate-300 text-sm font-semibold block mb-1">Elbow (J3) Min / Max &deg;</label>
+                        <div class="flex gap-2">
+                            <input type="number" id="in-j3-min" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-yellow-500">
+                            <input type="number" id="in-j3-max" class="w-1/2 bg-slate-900 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-yellow-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 mt-6">
+                    <button id="btn-settings-cancel" class="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors">Cancel</button>
+                    <button id="btn-settings-save" class="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg transition-colors">Save Limits</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Joysticks Panel -->
+        <div class="joystick-panel interactive-ui">
+            <div class="joystick-wrapper">
+                <div class="joystick-bg cursor-pointer" id="joy-base">
+                    <div class="joystick-knob" id="knob-base"></div>
+                </div>
+                <div class="text-center">
+                    <div class="text-yellow-500 font-bold text-sm">BASE</div>
+                    <div class="text-slate-400 text-xs text-nowrap">&larr; Yaw &rarr;</div>
+                </div>
+            </div>
+
+            <div class="joystick-wrapper">
+                <div class="joystick-bg cursor-pointer" id="joy-shoulder">
+                    <div class="joystick-knob" id="knob-shoulder"></div>
+                </div>
+                <div class="text-center">
+                    <div class="text-yellow-500 font-bold text-sm">SHOULDER</div>
+                    <div class="text-slate-400 text-xs text-nowrap">&uarr; Pitch &darr;</div>
+                </div>
+            </div>
+
+            <div class="joystick-wrapper">
+                <div class="joystick-bg cursor-pointer" id="joy-elbow">
+                    <div class="joystick-knob" id="knob-elbow"></div>
+                </div>
+                <div class="text-center">
+                    <div class="text-yellow-500 font-bold text-sm">ELBOW</div>
+                    <div class="text-slate-400 text-xs text-nowrap">&uarr; Pitch &darr;</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- 1. Scene Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0f172a); // Match slate-900
+        scene.fog = new THREE.Fog(0x0f172a, 20, 60);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(12, 10, 15);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below ground
+
+        // --- 2. Environment & Lighting ---
+        const grid = new THREE.GridHelper(30, 30, 0x334155, 0x1e293b);
+        scene.add(grid);
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(10, 20, 10);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        scene.add(dirLight);
+
+        // A small "workpiece" to weld
+        const tableMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
+        const table = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 4), tableMat);
+        table.position.set(5, 1, 0);
+        table.receiveShadow = true;
+        table.castShadow = true;
+        scene.add(table);
+
+        // --- 3. Robot Arm Construction ---
+        const colorYellow = 0xeab308;
+        const colorDarkGrey = 0x334155;
+        const matYellow = new THREE.MeshStandardMaterial({ color: colorYellow, roughness: 0.4, metalness: 0.2 });
+        const matGrey = new THREE.MeshStandardMaterial({ color: colorDarkGrey, roughness: 0.6, metalness: 0.5 });
+
+        // Utility to allow objects to cast/receive shadows
+        const applyShadows = (obj) => {
+            obj.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+        };
+
+        const robot = new THREE.Group();
+        scene.add(robot);
+
+        // Base Pedestal (Static)
+        const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 0.6, 32), matGrey);
+        baseMesh.position.y = 0.3;
+        robot.add(baseMesh);
+
+        // JOINT 1 (Base Yaw)
+        const j1 = new THREE.Group();
+        j1.position.y = 0.6; // Sit on top of base
+        robot.add(j1);
+
+        const j1Motor = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.8, 32), matYellow);
+        j1Motor.position.y = 0.4;
+        j1.add(j1Motor);
+
+        const link1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 4, 1.2), matYellow);
+        link1.position.y = 2.8; // Shift up (0.8 + 4/2)
+        j1.add(link1);
+
+        // JOINT 2 (Shoulder Pitch)
+        const j2 = new THREE.Group();
+        j2.position.y = 4.8; // Top of Link 1
+        j1.add(j2);
+
+        const j2Motor = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.6, 32), matGrey);
+        j2Motor.rotation.x = Math.PI / 2; // Orient sideways
+        j2.add(j2Motor);
+
+        const link2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 3.5, 0.9), matYellow);
+        link2.position.y = 1.75; // Shift up by half its height
+        j2.add(link2);
+
+        // JOINT 3 (Elbow Pitch)
+        const j3 = new THREE.Group();
+        j3.position.y = 3.5; // Top of Link 2
+        j2.add(j3);
+
+        const j3Motor = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 32), matGrey);
+        j3Motor.rotation.x = Math.PI / 2;
+        j3.add(j3Motor);
+
+        // Torch Assembly attached to J3
+        const torchGroup = new THREE.Group();
+        j3.add(torchGroup);
+
+        const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.5, 0.6), matYellow);
+        wrist.position.y = 0.75; // Top is at y=1.5
+        torchGroup.add(wrist);
+
+        // Bracket connecting wrist to the torch
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.5), matGrey);
+        bracket.position.set(0, 1.7, 0); // Sits exactly on top of the wrist (1.5 + 0.2)
+        torchGroup.add(bracket);
+
+        // Group for the welding torch to keep parts perfectly aligned
+        const tool = new THREE.Group();
+        tool.position.set(0, 1.9, 0); // Anchor at the top of the bracket (1.7 + 0.2)
+        torchGroup.add(tool);
+
+        // Main torch body
+        const torchBody = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.18, 1.0, 16), matGrey);
+        torchBody.position.set(0, 0.5, 0); // Shift up so base is at the anchor
+        tool.add(torchBody);
+
+        // Metal welding tip (cone) aligned to the end of the torch body
+        const tipMaterial = new THREE.MeshStandardMaterial({color: 0xaaaaaa, metalness: 0.8, roughness: 0.2});
+        const torchTip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.3, 16), tipMaterial);
+        torchTip.position.set(0, 1.15, 0); // 1.0 (body height) + 0.15 (half of cone height)
+        tool.add(torchTip);
+
+        applyShadows(robot);
+
+        // --- 4. Kinematic State & Limits ---
+        const limits = {
+            j1: { min: -Math.PI / 2, max: Math.PI / 2 },
+            j2: { min: -Math.PI / 2, max: Math.PI / 2 },
+            j3: { min: -Math.PI / 2, max: Math.PI / 2 }
+        };
+
+        let angles = { j1: 0, j2: 0, j3: 0 };
+        const ROTATION_SPEED = 0.03; // Radians per frame
+
+        // --- 5. Virtual Joystick Implementation ---
+        const joysticks = {
+            base: { x: 0, y: 0 },
+            shoulder: { x: 0, y: 0 },
+            elbow: { x: 0, y: 0 }
+        };
+
+        function setupJoystick(bgId, knobId, dataTarget) {
+            const bg = document.getElementById(bgId);
+            const knob = document.getElementById(knobId);
+            let active = false;
+            let center = { x: 0, y: 0 };
+            
+            const getEventCoords = (e) => {
+                if (e.touches && e.touches.length > 0) {
+                    return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                }
+                return { x: e.clientX, y: e.clientY };
+            };
+
+            const onStart = (e) => {
+                active = true;
+                const rect = bg.getBoundingClientRect();
+                center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+                onMove(e);
+            };
+
+            const onMove = (e) => {
+                if (!active) return;
+                
+                // Prevent OrbitControls or scrolling while using joysticks
+                if (e.cancelable) e.preventDefault(); 
+                
+                const coords = getEventCoords(e);
+                let dx = coords.x - center.x;
+                let dy = coords.y - center.y;
+                
+                const maxRadius = bg.offsetWidth / 2 - knob.offsetWidth / 2;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance > maxRadius) {
+                    dx = (dx / distance) * maxRadius;
+                    dy = (dy / distance) * maxRadius;
+                }
+
+                knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+                
+                // Normalize outputs between -1 and 1
+                joysticks[dataTarget].x = dx / maxRadius;
+                joysticks[dataTarget].y = -dy / maxRadius; // Invert Y so up is positive
+            };
+
+            const onEnd = () => {
+                active = false;
+                knob.style.transform = `translate(-50%, -50%)`;
+                joysticks[dataTarget].x = 0;
+                joysticks[dataTarget].y = 0;
+            };
+
+            // Mouse Events
+            bg.addEventListener('mousedown', onStart);
+            window.addEventListener('mousemove', onMove, { passive: false });
+            window.addEventListener('mouseup', onEnd);
+            
+            // Touch Events
+            bg.addEventListener('touchstart', onStart, { passive: false });
+            window.addEventListener('touchmove', onMove, { passive: false });
+            window.addEventListener('touchend', onEnd);
+            window.addEventListener('touchcancel', onEnd);
+        }
+
+        setupJoystick('joy-base', 'knob-base', 'base');
+        setupJoystick('joy-shoulder', 'knob-shoulder', 'shoulder');
+        setupJoystick('joy-elbow', 'knob-elbow', 'elbow');
+
+        // --- 6. UI Updates & Controls ---
+        const lblJ1 = document.getElementById('lbl-j1');
+        const lblJ2 = document.getElementById('lbl-j2');
+        const lblJ3 = document.getElementById('lbl-j3');
+        const limitsText = document.getElementById('limits-text');
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            angles.j1 = 0; angles.j2 = 0; angles.j3 = 0;
+        });
+
+        // Settings Modal Logic
+        const modal = document.getElementById('settings-modal');
+        const btnSettings = document.getElementById('btn-settings');
+        const btnCancel = document.getElementById('btn-settings-cancel');
+        const btnSave = document.getElementById('btn-settings-save');
+
+        const radToDeg = (rad) => Math.round(rad * 180 / Math.PI);
+        const degToRad = (deg) => deg * Math.PI / 180;
+
+        btnSettings.addEventListener('click', () => {
+            document.getElementById('in-j1-min').value = radToDeg(limits.j1.min);
+            document.getElementById('in-j1-max').value = radToDeg(limits.j1.max);
+            document.getElementById('in-j2-min').value = radToDeg(limits.j2.min);
+            document.getElementById('in-j2-max').value = radToDeg(limits.j2.max);
+            document.getElementById('in-j3-min').value = radToDeg(limits.j3.min);
+            document.getElementById('in-j3-max').value = radToDeg(limits.j3.max);
+            modal.classList.remove('hidden');
+        });
+
+        btnCancel.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        btnSave.addEventListener('click', () => {
+            limits.j1.min = degToRad(parseFloat(document.getElementById('in-j1-min').value) || -90);
+            limits.j1.max = degToRad(parseFloat(document.getElementById('in-j1-max').value) || 90);
+            limits.j2.min = degToRad(parseFloat(document.getElementById('in-j2-min').value) || -90);
+            limits.j2.max = degToRad(parseFloat(document.getElementById('in-j2-max').value) || 90);
+            limits.j3.min = degToRad(parseFloat(document.getElementById('in-j3-min').value) || -90);
+            limits.j3.max = degToRad(parseFloat(document.getElementById('in-j3-max').value) || 90);
+            
+            limitsText.innerText = `Custom limits applied`;
+            modal.classList.add('hidden');
+        });
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- 7. Main Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Update angles based on joystick velocity input
+            // Base uses X axis of joystick, others use Y axis
+            angles.j1 += joysticks.base.x * ROTATION_SPEED;
+            angles.j2 += joysticks.shoulder.y * ROTATION_SPEED;
+            angles.j3 += joysticks.elbow.y * ROTATION_SPEED;
+
+            // Clamp angles to strictly 180 degree sweeps (±90 degrees)
+            angles.j1 = Math.max(limits.j1.min, Math.min(limits.j1.max, angles.j1));
+            angles.j2 = Math.max(limits.j2.min, Math.min(limits.j2.max, angles.j2));
+            angles.j3 = Math.max(limits.j3.min, Math.min(limits.j3.max, angles.j3));
+
+            // Apply rotations to 3D model
+            j1.rotation.y = angles.j1;
+            j2.rotation.z = angles.j2;
+            j3.rotation.z = angles.j3;
+
+            // Update UI Labels
+            lblJ1.innerText = (angles.j1 * 180 / Math.PI).toFixed(1) + '°';
+            lblJ2.innerText = (angles.j2 * 180 / Math.PI).toFixed(1) + '°';
+            lblJ3.innerText = (angles.j3 * 180 / Math.PI).toFixed(1) + '°';
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // Start loop
+        animate();
+    </script>
+</body>
+</html>
+
