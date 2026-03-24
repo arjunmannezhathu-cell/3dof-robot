@@ -69,7 +69,7 @@
         @media (max-width: 768px) {
             .joystick-bg { width: 80px; height: 80px; }
             .joystick-knob { width: 34px; height: 34px; }
-            .joystick-panel { gap: 1rem; justify-content: center; width: 100%; margin-bottom: 1rem; }
+            .joystick-panel { gap: 1rem; justify-content: center; width: 100%; margin-bottom: 0.5rem; }
         }
     </style>
     <!-- Import maps polyfill -->
@@ -90,17 +90,31 @@
     <div id="ui-layer">
         <!-- Top Info Panel -->
         <div class="flex justify-between items-start">
-            <div class="bg-slate-800/90 text-slate-200 p-4 rounded-xl border border-slate-700 shadow-xl backdrop-blur-sm interactive-ui">
-                <h1 class="text-xl font-bold text-yellow-500 mb-1">3-Axis Welding Robot</h1>
-                <p id="limits-text" class="text-sm text-slate-400 mb-3">All joints limited to &plusmn;90&deg;</p>
-                <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-mono">
-                    <span class="text-slate-400">Base (J1):</span> <span id="lbl-j1" class="text-right text-white">0.0&deg;</span>
-                    <span class="text-slate-400">Shoulder (J2):</span> <span id="lbl-j2" class="text-right text-white">0.0&deg;</span>
-                    <span class="text-slate-400">Elbow (J3):</span> <span id="lbl-j3" class="text-right text-white">0.0&deg;</span>
+            <div class="bg-slate-800/90 text-slate-200 p-4 rounded-xl border border-slate-700 shadow-xl backdrop-blur-sm interactive-ui w-72">
+                <div id="info-header" class="flex justify-between items-center cursor-pointer select-none">
+                    <h1 class="text-xl font-bold text-yellow-500">Robot Info</h1>
+                    <svg id="info-chevron" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 transform transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                    </svg>
+                </div>
+                
+                <div id="info-content" class="mt-3">
+                    <p id="limits-text" class="text-sm text-slate-400 mb-3">All joints limited to &plusmn;90&deg;</p>
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm font-mono">
+                        <span class="text-slate-400">Base (J1):</span> <span id="lbl-j1" class="text-right text-white">0.0&deg;</span>
+                        <span class="text-slate-400">Shoulder (J2):</span> <span id="lbl-j2" class="text-right text-white">0.0&deg;</span>
+                        <span class="text-slate-400">Elbow (J3):</span> <span id="lbl-j3" class="text-right text-white">0.0&deg;</span>
+                    </div>
                 </div>
             </div>
             
             <div class="flex gap-2">
+                <button id="btn-workspace" class="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg shadow-lg transition-colors interactive-ui border border-slate-600 flex items-center justify-center" title="Toggle Workspace Area">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                </button>
                 <button id="btn-settings" class="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg shadow-lg transition-colors interactive-ui border border-slate-600 flex items-center justify-center" title="Settings">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -154,37 +168,51 @@
             </div>
         </div>
 
-        <!-- Joysticks Panel -->
-        <div class="joystick-panel interactive-ui">
-            <div class="joystick-wrapper">
-                <div class="joystick-bg cursor-pointer" id="joy-base">
-                    <div class="joystick-knob" id="knob-base"></div>
+        <!-- Bottom Controls Panel -->
+        <div class="flex flex-col md:flex-row justify-between items-center md:items-end w-full mt-auto pointer-events-none gap-4">
+            
+            <!-- Joysticks Panel -->
+            <div class="joystick-panel interactive-ui">
+                <div class="joystick-wrapper">
+                    <div class="joystick-bg cursor-pointer" id="joy-base">
+                        <div class="joystick-knob" id="knob-base"></div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-yellow-500 font-bold text-sm">BASE</div>
+                        <div class="text-slate-400 text-xs text-nowrap">&uarr; Pitch &darr;</div>
+                    </div>
                 </div>
-                <div class="text-center">
-                    <div class="text-yellow-500 font-bold text-sm">BASE</div>
-                    <div class="text-slate-400 text-xs text-nowrap">&larr; Yaw &rarr;</div>
+
+                <div class="joystick-wrapper">
+                    <div class="joystick-bg cursor-pointer" id="joy-shoulder">
+                        <div class="joystick-knob" id="knob-shoulder"></div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-yellow-500 font-bold text-sm">SHOULDER</div>
+                        <div class="text-slate-400 text-xs text-nowrap">&uarr; Pitch &darr;</div>
+                    </div>
+                </div>
+
+                <div class="joystick-wrapper">
+                    <div class="joystick-bg cursor-pointer" id="joy-elbow">
+                        <div class="joystick-knob" id="knob-elbow"></div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-yellow-500 font-bold text-sm">ELBOW</div>
+                        <div class="text-slate-400 text-xs text-nowrap">&uarr; Pitch &darr;</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="joystick-wrapper">
-                <div class="joystick-bg cursor-pointer" id="joy-shoulder">
-                    <div class="joystick-knob" id="knob-shoulder"></div>
+            <!-- Conveyor Speed Slider UI -->
+            <div class="bg-slate-800/90 p-4 rounded-xl border border-slate-700 shadow-xl backdrop-blur-sm interactive-ui w-full md:w-64">
+                <div class="flex justify-between items-center mb-2">
+                    <span class="text-slate-400 text-sm font-semibold">Belt Speed</span>
+                    <span id="lbl-speed" class="text-white text-sm font-mono bg-slate-900 px-2 py-0.5 rounded">1.0x</span>
                 </div>
-                <div class="text-center">
-                    <div class="text-yellow-500 font-bold text-sm">SHOULDER</div>
-                    <div class="text-slate-400 text-xs text-nowrap">&uarr; Pitch &darr;</div>
-                </div>
+                <input type="range" id="slider-speed" min="0" max="3" step="0.1" value="1" class="w-full accent-yellow-500 cursor-pointer">
             </div>
 
-            <div class="joystick-wrapper">
-                <div class="joystick-bg cursor-pointer" id="joy-elbow">
-                    <div class="joystick-knob" id="knob-elbow"></div>
-                </div>
-                <div class="text-center">
-                    <div class="text-yellow-500 font-bold text-sm">ELBOW</div>
-                    <div class="text-slate-400 text-xs text-nowrap">&uarr; Pitch &darr;</div>
-                </div>
-            </div>
         </div>
     </div>
 
@@ -227,13 +255,41 @@
         dirLight.shadow.mapSize.height = 2048;
         scene.add(dirLight);
 
-        // A small "workpiece" to weld
-        const tableMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
-        const table = new THREE.Mesh(new THREE.BoxGeometry(4, 2, 4), tableMat);
-        table.position.set(5, 1, 0);
-        table.receiveShadow = true;
-        table.castShadow = true;
-        scene.add(table);
+        // --- Conveyor Belt System ---
+        const conveyorGroup = new THREE.Group();
+        conveyorGroup.position.set(6, 0.5, 0); // Positioned in front of the arm's reach
+        conveyorGroup.rotation.y = Math.PI / 2; // Rotated 90 degrees to run perpendicular
+        scene.add(conveyorGroup);
+
+        // Belt Base
+        const beltBaseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9 });
+        const beltBase = new THREE.Mesh(new THREE.BoxGeometry(16, 1, 3), beltBaseMat);
+        beltBase.receiveShadow = true;
+        beltBase.castShadow = true;
+        conveyorGroup.add(beltBase);
+        
+        // Side Rails
+        const railMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+        const rail1 = new THREE.Mesh(new THREE.BoxGeometry(16, 1.2, 0.2), railMat);
+        rail1.position.set(0, 0.1, 1.6);
+        conveyorGroup.add(rail1);
+        const rail2 = new THREE.Mesh(new THREE.BoxGeometry(16, 1.2, 0.2), railMat);
+        rail2.position.set(0, 0.1, -1.6);
+        conveyorGroup.add(rail2);
+
+        // Moving Workpieces
+        const workpieces = [];
+        const wpGeometry = new THREE.BoxGeometry(1.2, 0.8, 1.2);
+        const wpMaterial = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.3 }); // Blue boxes
+        
+        for (let i = 0; i < 4; i++) {
+            const wp = new THREE.Mesh(wpGeometry, wpMaterial);
+            wp.position.set(-6 + i * 4, 0.9, 0); // Sit perfectly on top of belt
+            wp.castShadow = true;
+            wp.receiveShadow = true;
+            conveyorGroup.add(wp);
+            workpieces.push(wp);
+        }
 
         // --- 3. Robot Arm Construction ---
         const colorYellow = 0xeab308;
@@ -255,33 +311,33 @@
         scene.add(robot);
 
         // Base Pedestal (Static)
-        const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 0.6, 32), matGrey);
-        baseMesh.position.y = 0.3;
+        const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.8, 1.0, 32), matGrey);
+        baseMesh.position.y = 0.5;
         robot.add(baseMesh);
 
-        // JOINT 1 (Base Yaw)
+        // JOINT 1 (Base Pitch)
         const j1 = new THREE.Group();
-        j1.position.y = 0.6; // Sit on top of base
+        j1.position.y = 1.2; // Sit slightly above the base
         robot.add(j1);
 
-        const j1Motor = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 0.8, 32), matYellow);
-        j1Motor.position.y = 0.4;
+        const j1Motor = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.0, 1.8, 32), matGrey);
+        j1Motor.rotation.x = Math.PI / 2; // Orient sideways
         j1.add(j1Motor);
 
-        const link1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 4, 1.2), matYellow);
-        link1.position.y = 2.8; // Shift up (0.8 + 4/2)
+        const link1 = new THREE.Mesh(new THREE.BoxGeometry(1.0, 4.0, 1.0), matYellow);
+        link1.position.y = 2.0; // Shift up by half its height
         j1.add(link1);
 
         // JOINT 2 (Shoulder Pitch)
         const j2 = new THREE.Group();
-        j2.position.y = 4.8; // Top of Link 1
+        j2.position.y = 4.0; // Top of Link 1
         j1.add(j2);
 
         const j2Motor = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1.6, 32), matGrey);
         j2Motor.rotation.x = Math.PI / 2; // Orient sideways
         j2.add(j2Motor);
 
-        const link2 = new THREE.Mesh(new THREE.BoxGeometry(0.9, 3.5, 0.9), matYellow);
+        const link2 = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3.5, 0.8), matYellow);
         link2.position.y = 1.75; // Shift up by half its height
         j2.add(link2);
 
@@ -291,7 +347,7 @@
         j2.add(j3);
 
         const j3Motor = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1.2, 32), matGrey);
-        j3Motor.rotation.x = Math.PI / 2;
+        j3Motor.rotation.x = Math.PI / 2; // Orient sideways
         j3.add(j3Motor);
 
         // Torch Assembly attached to J3
@@ -334,6 +390,67 @@
 
         let angles = { j1: 0, j2: 0, j3: 0 };
         const ROTATION_SPEED = 0.03; // Radians per frame
+
+        // --- Workspace Visualization ---
+        let showWorkspace = false;
+        let workspaceCloud = null;
+
+        function updateWorkspaceCloud() {
+            if (workspaceCloud) {
+                scene.remove(workspaceCloud);
+                workspaceCloud.geometry.dispose();
+                workspaceCloud.material.dispose();
+                workspaceCloud = null;
+            }
+
+            const points = [];
+            const steps = 20; // Generate 8,000 sampling points
+            const L1 = 4.0, L2 = 3.5, L3 = 3.05; // Exact kinematic lengths
+
+            for (let i = 0; i <= steps; i++) {
+                const a1 = limits.j1.min + (limits.j1.max - limits.j1.min) * (i / steps);
+                for (let j = 0; j <= steps; j++) {
+                    const a2 = limits.j2.min + (limits.j2.max - limits.j2.min) * (j / steps);
+                    for (let k = 0; k <= steps; k++) {
+                        const a3 = limits.j3.min + (limits.j3.max - limits.j3.min) * (k / steps);
+                        
+                        // Forward Kinematics for Z-axis rotation (Pitch)
+                        let px = 0;
+                        let py = 1.2; // Base offset
+                        
+                        px += -Math.sin(a1) * L1;
+                        py += Math.cos(a1) * L1;
+                        
+                        px += -Math.sin(a1 + a2) * L2;
+                        py += Math.cos(a1 + a2) * L2;
+                        
+                        px += -Math.sin(a1 + a2 + a3) * L3;
+                        py += Math.cos(a1 + a2 + a3) * L3;
+
+                        // Add small Z variance to give it 3D thickness
+                        points.push(new THREE.Vector3(px, py, 0));
+                        points.push(new THREE.Vector3(px, py, 0.2));
+                        points.push(new THREE.Vector3(px, py, -0.2));
+                    }
+                }
+            }
+
+            const geo = new THREE.BufferGeometry().setFromPoints(points);
+            const mat = new THREE.PointsMaterial({ 
+                color: 0x0ea5e9, // Cyan glowing dots
+                size: 0.2, 
+                transparent: true, 
+                opacity: 0.1,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending 
+            });
+
+            workspaceCloud = new THREE.Points(geo, mat);
+            if (showWorkspace) scene.add(workspaceCloud);
+        }
+
+        // Initialize the workspace visually
+        updateWorkspaceCloud();
 
         // --- 5. Virtual Joystick Implementation ---
         const joysticks = {
@@ -416,6 +533,38 @@
         const lblJ3 = document.getElementById('lbl-j3');
         const limitsText = document.getElementById('limits-text');
 
+        // Info Panel Collapsible Logic
+        const infoHeader = document.getElementById('info-header');
+        const infoContent = document.getElementById('info-content');
+        const infoChevron = document.getElementById('info-chevron');
+        
+        infoHeader.addEventListener('click', () => {
+            infoContent.classList.toggle('hidden');
+            infoChevron.classList.toggle('rotate-180');
+        });
+
+        // Workspace Toggle Logic
+        document.getElementById('btn-workspace').addEventListener('click', () => {
+            showWorkspace = !showWorkspace;
+            if (showWorkspace) {
+                scene.add(workspaceCloud);
+                document.getElementById('btn-workspace').classList.replace('bg-slate-700', 'bg-blue-600');
+            } else {
+                scene.remove(workspaceCloud);
+                document.getElementById('btn-workspace').classList.replace('bg-blue-600', 'bg-slate-700');
+            }
+        });
+
+        // Conveyor speed logic
+        const sliderSpeed = document.getElementById('slider-speed');
+        const lblSpeed = document.getElementById('lbl-speed');
+        let conveyorSpeedMultiplier = 1.0;
+
+        sliderSpeed.addEventListener('input', (e) => {
+            conveyorSpeedMultiplier = parseFloat(e.target.value);
+            lblSpeed.innerText = conveyorSpeedMultiplier.toFixed(1) + 'x';
+        });
+
         document.getElementById('btn-reset').addEventListener('click', () => {
             angles.j1 = 0; angles.j2 = 0; angles.j3 = 0;
         });
@@ -453,6 +602,9 @@
             
             limitsText.innerText = `Custom limits applied`;
             modal.classList.add('hidden');
+            
+            // Re-generate the point cloud based on new physical limits
+            updateWorkspaceCloud();
         });
 
         // Resize handler
@@ -466,19 +618,29 @@
         function animate() {
             requestAnimationFrame(animate);
 
+            // Animate Conveyor Workpieces
+            const baseConveyorSpeed = 0.04;
+            workpieces.forEach(wp => {
+                wp.position.x += baseConveyorSpeed * conveyorSpeedMultiplier;
+                if (wp.position.x > 8) {
+                    wp.position.x = -8; // Loop back to the start
+                }
+            });
+
             // Update angles based on joystick velocity input
-            // Base uses X axis of joystick, others use Y axis
-            angles.j1 += joysticks.base.x * ROTATION_SPEED;
+            // All joysticks now use the Y axis for pitch control
+            angles.j1 += joysticks.base.y * ROTATION_SPEED;
             angles.j2 += joysticks.shoulder.y * ROTATION_SPEED;
             angles.j3 += joysticks.elbow.y * ROTATION_SPEED;
 
-            // Clamp angles to strictly 180 degree sweeps (±90 degrees)
+            // Clamp angles to strictly 180 degree sweeps (±90 degrees default)
             angles.j1 = Math.max(limits.j1.min, Math.min(limits.j1.max, angles.j1));
             angles.j2 = Math.max(limits.j2.min, Math.min(limits.j2.max, angles.j2));
             angles.j3 = Math.max(limits.j3.min, Math.min(limits.j3.max, angles.j3));
 
             // Apply rotations to 3D model
-            j1.rotation.y = angles.j1;
+            // All joints now rotate around the Z axis (pitch)
+            j1.rotation.z = angles.j1;
             j2.rotation.z = angles.j2;
             j3.rotation.z = angles.j3;
 
@@ -496,4 +658,3 @@
     </script>
 </body>
 </html>
-
