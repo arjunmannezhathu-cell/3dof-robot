@@ -109,6 +109,11 @@
             </div>
             
             <div class="flex gap-2">
+                <button id="btn-ik" class="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg shadow-lg transition-colors interactive-ui border border-slate-600 flex items-center justify-center" title="Toggle Inverse Kinematics Mode (Click to Move)">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                </button>
                 <button id="btn-workspace" class="bg-slate-700 hover:bg-slate-600 text-white p-2 rounded-lg shadow-lg transition-colors interactive-ui border border-slate-600 flex items-center justify-center" title="Toggle Workspace Area">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -255,6 +260,22 @@
         dirLight.shadow.mapSize.height = 2048;
         scene.add(dirLight);
 
+        // --- IK Interaction Plane ---
+        // Invisible plane exactly at Z=0 to capture mouse clicks for IK target
+        const clickPlane = new THREE.Mesh(
+            new THREE.PlaneGeometry(100, 100), 
+            new THREE.MeshBasicMaterial({ visible: false })
+        );
+        scene.add(clickPlane);
+
+        // Visual Target Marker for IK
+        const targetMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(0.2, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xef4444 }) // Red marker
+        );
+        targetMarker.visible = false;
+        scene.add(targetMarker);
+
         // --- Conveyor Belt System ---
         const conveyorGroup = new THREE.Group();
         conveyorGroup.position.set(6, 0.5, 0); // Positioned in front of the arm's reach
@@ -391,6 +412,11 @@
         let angles = { j1: 0, j2: 0, j3: 0 };
         const ROTATION_SPEED = 0.03; // Radians per frame
 
+        // Inverse Kinematics State
+        let ikMode = false;
+        let ikActive = false;
+        const ikTarget = new THREE.Vector3();
+
         // --- Workspace Visualization ---
         let showWorkspace = false;
         let workspaceCloud = null;
@@ -452,7 +478,7 @@
         // Initialize the workspace visually
         updateWorkspaceCloud();
 
-        // --- 5. Virtual Joystick Implementation ---
+        // --- 5. Virtual Joystick & Mouse Interaction Implementation ---
         const joysticks = {
             base: { x: 0, y: 0 },
             shoulder: { x: 0, y: 0 },
@@ -527,6 +553,30 @@
         setupJoystick('joy-shoulder', 'knob-shoulder', 'shoulder');
         setupJoystick('joy-elbow', 'knob-elbow', 'elbow');
 
+        // Inverse Kinematics Click Interaction
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        renderer.domElement.addEventListener('pointerdown', (event) => {
+            if (!ikMode) return;
+            if (event.button !== 0) return; // Only listen for left-clicks
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(clickPlane);
+
+            if (intersects.length > 0) {
+                ikTarget.copy(intersects[0].point);
+                ikTarget.z = 0; // Lock to the 2D working plane
+                targetMarker.position.copy(ikTarget);
+                targetMarker.visible = true;
+                ikActive = true;
+            }
+        });
+
         // --- 6. UI Updates & Controls ---
         const lblJ1 = document.getElementById('lbl-j1');
         const lblJ2 = document.getElementById('lbl-j2');
@@ -541,6 +591,21 @@
         infoHeader.addEventListener('click', () => {
             infoContent.classList.toggle('hidden');
             infoChevron.classList.toggle('rotate-180');
+        });
+
+        // IK Toggle Button Logic
+        const btnIk = document.getElementById('btn-ik');
+        btnIk.addEventListener('click', () => {
+            ikMode = !ikMode;
+            if (ikMode) {
+                btnIk.classList.replace('bg-slate-700', 'bg-blue-600');
+                document.body.style.cursor = 'crosshair';
+            } else {
+                btnIk.classList.replace('bg-blue-600', 'bg-slate-700');
+                document.body.style.cursor = 'default';
+                ikActive = false;
+                targetMarker.visible = false;
+            }
         });
 
         // Workspace Toggle Logic
@@ -567,6 +632,8 @@
 
         document.getElementById('btn-reset').addEventListener('click', () => {
             angles.j1 = 0; angles.j2 = 0; angles.j3 = 0;
+            ikActive = false;
+            targetMarker.visible = false;
         });
 
         // Settings Modal Logic
@@ -627,22 +694,86 @@
                 }
             });
 
-            // Update angles based on joystick velocity input
-            // All joysticks now use the Y axis for pitch control
-            angles.j1 += joysticks.base.y * ROTATION_SPEED;
-            angles.j2 += joysticks.shoulder.y * ROTATION_SPEED;
-            angles.j3 += joysticks.elbow.y * ROTATION_SPEED;
+            // Check if user has overridden IK via manual joysticks
+            if (joysticks.base.y !== 0 || joysticks.shoulder.y !== 0 || joysticks.elbow.y !== 0) {
+                ikActive = false;
+                targetMarker.visible = false;
+            }
 
-            // Clamp angles to strictly 180 degree sweeps (±90 degrees default)
-            angles.j1 = Math.max(limits.j1.min, Math.min(limits.j1.max, angles.j1));
-            angles.j2 = Math.max(limits.j2.min, Math.min(limits.j2.max, angles.j2));
-            angles.j3 = Math.max(limits.j3.min, Math.min(limits.j3.max, angles.j3));
+            // Inverse Kinematics (IK) Cyclic Coordinate Descent (CCD) Solver
+            if (ikActive) {
+                robot.updateMatrixWorld(true);
+                const tipPos = new THREE.Vector3();
+                torchTip.getWorldPosition(tipPos);
 
-            // Apply rotations to 3D model
-            // All joints now rotate around the Z axis (pitch)
-            j1.rotation.z = angles.j1;
-            j2.rotation.z = angles.j2;
-            j3.rotation.z = angles.j3;
+                // Check if close enough to target
+                if (tipPos.distanceTo(ikTarget) < 0.05) {
+                    ikActive = false;
+                    targetMarker.visible = false;
+                } else {
+                    // Start from the outermost joint and move inwards
+                    const jointsToSolve = [
+                        { obj: j3, key: 'j3' },
+                        { obj: j2, key: 'j2' },
+                        { obj: j1, key: 'j1' }
+                    ];
+
+                    // Do 2 iteration cycles per frame for smooth but fast movement
+                    for (let iter = 0; iter < 2; iter++) {
+                        for (const joint of jointsToSolve) {
+                            torchTip.getWorldPosition(tipPos);
+                            const jointPos = new THREE.Vector3();
+                            joint.obj.getWorldPosition(jointPos);
+
+                            // Vector from joint to current tip position
+                            const vTip = new THREE.Vector3().subVectors(tipPos, jointPos);
+                            vTip.z = 0; 
+                            
+                            // Vector from joint to desired target
+                            const vTarget = new THREE.Vector3().subVectors(ikTarget, jointPos);
+                            vTarget.z = 0;
+
+                            if (vTip.lengthSq() > 0.0001 && vTarget.lengthSq() > 0.0001) {
+                                vTip.normalize();
+                                vTarget.normalize();
+
+                                // Calculate 2D angle difference in the XY plane
+                                const cross = vTip.x * vTarget.y - vTip.y * vTarget.x;
+                                const dot = vTip.x * vTarget.x + vTip.y * vTarget.y;
+                                let angleDiff = Math.atan2(cross, dot);
+
+                                // Clamp max velocity of auto-rotation for smooth animation
+                                const maxStep = ROTATION_SPEED * 3;
+                                angleDiff = Math.max(-maxStep, Math.min(maxStep, angleDiff));
+
+                                angles[joint.key] += angleDiff;
+
+                                // Clamp angle to the joint limits you configured in settings
+                                angles[joint.key] = Math.max(limits[joint.key].min, Math.min(limits[joint.key].max, angles[joint.key]));
+
+                                // Apply to object instantly to use updated matrix for next joint in sequence
+                                joint.obj.rotation.z = angles[joint.key];
+                                robot.updateMatrixWorld(true);
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Update angles based on manual joystick velocity input
+                angles.j1 += joysticks.base.y * ROTATION_SPEED;
+                angles.j2 += joysticks.shoulder.y * ROTATION_SPEED;
+                angles.j3 += joysticks.elbow.y * ROTATION_SPEED;
+
+                // Enforce Limits
+                angles.j1 = Math.max(limits.j1.min, Math.min(limits.j1.max, angles.j1));
+                angles.j2 = Math.max(limits.j2.min, Math.min(limits.j2.max, angles.j2));
+                angles.j3 = Math.max(limits.j3.min, Math.min(limits.j3.max, angles.j3));
+
+                // Apply to objects
+                j1.rotation.z = angles.j1;
+                j2.rotation.z = angles.j2;
+                j3.rotation.z = angles.j3;
+            }
 
             // Update UI Labels
             lblJ1.innerText = (angles.j1 * 180 / Math.PI).toFixed(1) + '°';
