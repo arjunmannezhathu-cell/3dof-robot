@@ -1,0 +1,100 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESP32Servo.h>
+
+// --- Network Credentials ---
+const char* ssid = "WeldingRobot_AP";
+const char* password = "password123"; // Must be at least 8 characters
+
+// Web Server listening on standard HTTP port 80
+WebServer server(80);
+
+// --- Hardware Setup ---
+Servo servoBase;     // J1
+Servo servoShoulder; // J2
+Servo servoElbow;    // J3
+
+// Define GPIO pins for your servos (Change these to match your actual wiring)
+const int pinBase = 12;
+const int pinShoulder = 13;
+const int pinElbow = 14;
+
+// --- API Endpoint Handler ---
+void handleSetAngles() {
+  // IMPORTANT: Send CORS headers so the web browser allows the request
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  if (server.hasArg("j1") && server.hasArg("j2") && server.hasArg("j3")) {
+    // 1. Read the angles coming from the web app (-90.0 to +90.0)
+    float j1 = server.arg("j1").toFloat();
+    float j2 = server.arg("j2").toFloat();
+    float j3 = server.arg("j3").toFloat();
+
+    // -- NEW: Print incoming values to the Serial Monitor --
+    Serial.print("Received Angles -> J1: ");
+    Serial.print(j1);
+    Serial.print(" | J2: ");
+    Serial.print(j2);
+    Serial.print(" | J3: ");
+    Serial.println(j3);
+
+    // 2. Map the angles to standard 0-180 degree servo limits
+    // We add 90 so that an incoming 0 degrees centers the servo at 90 degrees
+    int s1Angle = constrain(round(j1 + 90.0), 0, 180);
+    int s2Angle = constrain(round(j2 + 90.0), 0, 180);
+    int s3Angle = constrain(round(j3 + 90.0), 0, 180);
+
+    // 3. Move the physical servos
+    servoBase.write(s1Angle);
+    servoShoulder.write(s2Angle);
+    servoElbow.write(s3Angle);
+
+    // 4. Respond to the web app
+    server.send(200, "text/plain", "OK");
+  } else {
+    server.send(400, "text/plain", "Bad Request: Missing parameters");
+  }
+}
+
+// Handle CORS Preflight requests (Browsers do this automatically)
+void handleOptions() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  server.send(204);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // --- Initialize Servos ---
+  // standard widths are often 500us to 2500us, adjust if your servos buzz at limits
+  servoBase.attach(pinBase, 500, 2500);
+  servoShoulder.attach(pinShoulder, 500, 2500);
+  servoElbow.attach(pinElbow, 500, 2500);
+
+  // Set to default 0-degree pose (90 degrees on physical servo)
+  servoBase.write(90);
+  servoShoulder.write(90);
+  servoElbow.write(90);
+
+  // --- Initialize Wi-Fi AP ---
+  Serial.println("\nSetting up Access Point...");
+  WiFi.softAP(ssid, password);
+  
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP); // By default, ESP32 AP is usually 192.168.4.1
+
+  // --- Start Web Server ---
+  server.on("/setAngles", HTTP_GET, handleSetAngles);
+  server.on("/setAngles", HTTP_OPTIONS, handleOptions);
+  server.begin();
+  Serial.println("HTTP server started!");
+}
+
+void loop() {
+  // Listen for incoming requests from the Web App
+  server.handleClient();
+  delay(2); // Small yield for stability
+}
