@@ -1,0 +1,206 @@
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESP32Servo.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// --- Network Credentials ---
+const char* ssid = "WeldingRobot_AP";
+const char* password = "password123"; // Must be at least 8 characters
+
+// Web Server listening on standard HTTP port 80
+WebServer server(80);
+
+// --- Hardware Setup ---
+Servo servoBase;     // J1
+Servo servoShoulder; // J2
+Servo servoElbow;    // J3
+
+// Define GPIO pins for your servos (Change these to match your actual wiring)
+const int pinBase = 12;
+const int pinShoulder = 13;
+const int pinElbow = 14;
+
+// --- OLED Display Setup ---
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET    -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// Explicit ESP32 I2C Pins
+#define I2C_SDA 21
+#define I2C_SCL 22
+
+// --- Robot State ---
+float currentJ1 = 0.0;
+float currentJ2 = 0.0;
+float currentJ3 = 0.0;
+bool displayNeedsUpdate = true; // Flag to trigger screen refresh
+
+// --- Display Drawing Function ---
+void updateOLED() {
+  display.clearDisplay();
+  
+  // 1. Draw Angle Text (Left side)
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("Angles:");
+  
+  display.print("J1: "); display.println(currentJ1, 1);
+  display.print("J2: "); display.println(currentJ2, 1);
+  display.print("J3: "); display.println(currentJ3, 1);
+
+  // 2. Draw Vector Image of Robot Arm (Right side)
+  // Base anchor position on the screen (x: 96, y: 60 - bottom right)
+  int x0 = 96; 
+  int y0 = 60;
+  
+  // Scaled link lengths for the 128x64 display
+  float L1 = 18.0; 
+  float L2 = 16.0; 
+  float L3 = 14.0;
+  
+  // Convert degrees to radians for math
+  float r1 = currentJ1 * PI / 180.0;
+  float r2 = currentJ2 * PI / 180.0;
+  float r3 = currentJ3 * PI / 180.0;
+  
+  // Forward Kinematics (Mapped to OLED screen coordinates where Y is inverted)
+  int x1 = x0 - L1 * sin(r1);
+  int y1 = y0 - L1 * cos(r1);
+  
+  int x2 = x1 - L2 * sin(r1 + r2);
+  int y2 = y1 - L2 * cos(r1 + r2);
+  
+  int x3 = x2 - L3 * sin(r1 + r2 + r3);
+  int y3 = y2 - L3 * cos(r1 + r2 + r3);
+  
+  // Draw physical base plate
+  display.drawLine(x0 - 6, y0, x0 + 6, y0, SSD1306_WHITE); 
+  
+  // Draw Links (Segments)
+  display.drawLine(x0, y0, x1, y1, SSD1306_WHITE);
+  display.drawLine(x1, y1, x2, y2, SSD1306_WHITE);
+  display.drawLine(x2, y2, x3, y3, SSD1306_WHITE);
+  
+  // Draw Joints (Circles)
+  display.fillCircle(x0, y0, 2, SSD1306_WHITE);
+  display.fillCircle(x1, y1, 2, SSD1306_WHITE);
+  display.fillCircle(x2, y2, 2, SSD1306_WHITE);
+  
+  // Draw Welding Tip (Small Circle)
+  display.drawCircle(x3, y3, 1, SSD1306_WHITE);
+
+  // Push buffer to screen
+  display.display();
+  displayNeedsUpdate = false;
+}
+
+// --- API Endpoint Handler ---
+void handleSetAngles() {
+  // IMPORTANT: Send CORS headers so the web browser allows the request
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  if (server.hasArg("j1") && server.hasArg("j2") && server.hasArg("j3")) {
+    // 1. Read the angles coming from the web app (-90.0 to +90.0)
+    float j1 = server.arg("j1").toFloat();
+    float j2 = server.arg("j2").toFloat();
+    float j3 = server.arg("j3").toFloat();
+
+    // Update global state and request OLED redraw
+    currentJ1 = j1;
+    currentJ2 = j2;
+    currentJ3 = j3;
+    displayNeedsUpdate = true;
+
+    // Print incoming values to the Serial Monitor
+    Serial.print("Received Angles -> J1: ");
+    Serial.print(j1);
+    Serial.print(" | J2: ");
+    Serial.print(j2);
+    Serial.print(" | J3: ");
+    Serial.println(j3);
+
+    // 2. Map the angles to standard 0-180 degree servo limits
+    int s1Angle = constrain(round(j1 + 90.0), 0, 180);
+    int s2Angle = constrain(round(j2 + 90.0), 0, 180);
+    int s3Angle = constrain(round(j3 + 90.0), 0, 180);
+
+    // 3. Move the physical servos
+    servoBase.write(s1Angle);
+    servoShoulder.write(s2Angle);
+    servoElbow.write(s3Angle);
+
+    // 4. Respond to the web app
+    server.send(200, "text/plain", "OK");
+  } else {
+    server.send(400, "text/plain", "Bad Request: Missing parameters");
+  }
+}
+
+// Handle CORS Preflight requests (Browsers do this automatically)
+void handleOptions() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  server.send(204);
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // --- Initialize OLED explicitly with Pins 21 and 22 ---
+  Wire.begin(I2C_SDA, I2C_SCL);
+  
+  // Default I2C address for most 128x64 OLEDs is 0x3C
+  // Note: If 0x3C fails and wiring is correct, try 0x3D!
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    Serial.println(F("SSD1306 allocation failed! Check wiring or change address to 0x3D."));
+  } else {
+    Serial.println(F("OLED initialized successfully."));
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 20);
+    display.println("Starting Robot...");
+    display.display();
+    delay(1000);
+  }
+
+  // --- Initialize Servos ---
+  servoBase.attach(pinBase, 500, 2500);
+  servoShoulder.attach(pinShoulder, 500, 2500);
+  servoElbow.attach(pinElbow, 500, 2500);
+
+  servoBase.write(90);
+  servoShoulder.write(90);
+  servoElbow.write(90);
+
+  // --- Initialize Wi-Fi AP ---
+  Serial.println("\nSetting up Access Point...");
+  WiFi.softAP(ssid, password);
+  
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP); 
+
+  // --- Start Web Server ---
+  server.on("/setAngles", HTTP_GET, handleSetAngles);
+  server.on("/setAngles", HTTP_OPTIONS, handleOptions);
+  server.begin();
+  Serial.println("HTTP server started!");
+}
+
+void loop() {
+  // Listen for incoming requests from the Web App
+  server.handleClient();
+
+  // Draw to screen if new angles arrived
+  if (displayNeedsUpdate) {
+    updateOLED();
+  }
+  
+  delay(2); // Small yield for stability
+}
